@@ -6,9 +6,11 @@
 package trello
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"time"
@@ -105,6 +107,10 @@ func (c *Client) Get(path string, args Arguments, target interface{}) error {
 // the Arguments as URL parameters. Then it returns either the target interface
 // updated from the response or an error.
 func (c *Client) Put(path string, args Arguments, target interface{}) error {
+	return c.PutWithBody(path, args, nil, target)
+}
+
+func (c *Client) PutWithBody(path string, args Arguments, bodyData interface{}, target interface{}) error {
 
 	// Trello prohibits more than 10 seconds/second per token
 	c.Throttle()
@@ -123,9 +129,23 @@ func (c *Client) Put(path string, args Arguments, target interface{}) error {
 	url := fmt.Sprintf("%s/%s", c.BaseURL, path)
 	urlWithParams := fmt.Sprintf("%s?%s", url, params.Encode())
 
-	req, err := http.NewRequest("PUT", urlWithParams, nil)
+	var body io.Reader
+	if bodyData == nil {
+		body = http.NoBody
+	} else {
+		b, err := json.Marshal(bodyData)
+		if err != nil {
+			return errors.Wrapf(err, "Invalid PUT request %s", url)
+		}
+		body = bytes.NewReader(b)
+	}
+
+	req, err := http.NewRequest("PUT", urlWithParams, body)
 	if err != nil {
 		return errors.Wrapf(err, "Invalid PUT request %s", url)
+	}
+	if bodyData != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 
 	return c.do(req, url, target)
